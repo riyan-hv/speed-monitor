@@ -53,12 +53,10 @@ export async function validateApiKey(request: Request): Promise<ApiKeyPayload | 
     if (valid) {
       // Update last_used_at: best-effort, fire-and-forget.
       // Ingest MUST NOT fail if this update errors (e.g. transient DB issue).
-      supabaseAdmin
+      void supabaseAdmin
         .from('device_api_keys')
         .update({ last_used_at: new Date().toISOString() })
         .eq('id', row.id)
-        .then(() => {})
-        .catch(() => {})
 
       return { deviceId }
     }
