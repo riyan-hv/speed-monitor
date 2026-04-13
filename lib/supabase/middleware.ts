@@ -34,10 +34,12 @@ export async function updateSession(request: NextRequest) {
   // - / (login page — must be public)
   // - /auth/* (OAuth callback route)
   // - /api/ingest/* (device API — authenticated via X-Api-Key, not session)
+  // - /api/commands/* (device API — authenticated via X-Api-Key, not session)
   const isPublicRoute =
     pathname === '/' ||
     pathname.startsWith('/auth/') ||
-    pathname.startsWith('/api/ingest/')
+    pathname.startsWith('/api/ingest/') ||
+    pathname.startsWith('/api/commands/')
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone()
