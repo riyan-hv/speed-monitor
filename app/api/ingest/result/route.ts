@@ -164,5 +164,76 @@ export async function POST(request: Request) {
     }
   }
 
+  // --- Step 6: Alert threshold check (fire-and-forget — never blocks 202 response) ---
+  void checkAlertThresholds(
+    data.device_id,
+    data.download_mbps ?? null,
+    data.upload_mbps ?? null,
+    data.latency_ms ?? null,
+  )
+
   return NextResponse.json({ ok: true }, { status: 202 })
+}
+
+// ---------------------------------------------------------------------------
+// checkAlertThresholds
+//
+// Runs asynchronously after every successful speed_results insert.
+// Reads all enabled alert_configs, evaluates thresholds, and writes rows to
+// alert_history for any rule that is violated. Never throws — errors are
+// logged only. Does NOT send Slack webhooks (deferred to Phase 4).
+//
+// Threshold direction:
+//   download_mbps / upload_mbps — alert if actual < threshold_value (too slow)
+//   latency_ms                  — alert if actual > threshold_value (too high)
+// ---------------------------------------------------------------------------
+async function checkAlertThresholds(
+  deviceId: string,
+  download: number | null,
+  upload: number | null,
+  latency: number | null,
+): Promise<void> {
+  try {
+    const { data: configs, error } = await supabaseAdmin
+      .from('alert_configs')
+      .select('id, metric, threshold_value, scope, scope_device_id')
+      .eq('enabled', true)
+
+    if (error || !configs?.length) return
+
+    const metricMap: Record<string, number | null> = {
+      download_mbps: download,
+      upload_mbps: upload,
+      latency_ms: latency,
+    }
+
+    const triggered = configs.filter(cfg => {
+      // Scope check: if scope is 'device', only match the specific device
+      if (cfg.scope === 'device' && cfg.scope_device_id !== deviceId) return false
+
+      const actual = metricMap[cfg.metric]
+      if (actual == null || cfg.threshold_value == null) return false
+
+      // For download/upload: alert if BELOW threshold; for latency: alert if ABOVE
+      if (cfg.metric === 'latency_ms') return actual > cfg.threshold_value
+      return actual < cfg.threshold_value
+    })
+
+    if (!triggered.length) return
+
+    const rows = triggered.map(cfg => ({
+      config_id: cfg.id,
+      device_id: deviceId,
+      metric_value: metricMap[cfg.metric] as number,
+      message: `${cfg.metric} ${cfg.metric === 'latency_ms' ? 'exceeded' : 'dropped below'} threshold of ${cfg.threshold_value}`,
+      delivered: false,
+    }))
+
+    const { error: insertError } = await supabaseAdmin.from('alert_history').insert(rows)
+    if (insertError) {
+      console.error('[ingest/result] alert_history insert error:', insertError)
+    }
+  } catch (err) {
+    console.error('[ingest/result] checkAlertThresholds unexpected error:', err)
+  }
 }
