@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { computeHealthStatus } from '@/lib/admin/health'
 import DeviceTable, { DeviceRow } from '@/components/admin/DeviceTable'
+import JitterProblemDevices from '@/components/admin/JitterProblemDevices'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,46 @@ interface SearchParams {
   order?: string
   vpn?: string
   band?: string
+}
+
+async function getJitterStats() {
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+  const { data } = await supabaseAdmin
+    .from('speed_results')
+    .select('device_id, hostname, jitter_ms')
+    .gte('timestamp_utc', since24h)
+    .not('jitter_ms', 'is', null)
+
+  const rows = data ?? []
+
+  // Fleet average
+  const allJitter = rows.map((r) => r.jitter_ms as number)
+  const fleetAvg =
+    allJitter.length > 0
+      ? Math.round((allJitter.reduce((a, b) => a + b, 0) / allJitter.length) * 100) / 100
+      : 0
+
+  // Per-device average
+  const byDevice: Record<string, { device_id: string; hostname: string | null; values: number[] }> = {}
+  for (const row of rows) {
+    if (row.jitter_ms == null) continue
+    if (!byDevice[row.device_id]) {
+      byDevice[row.device_id] = { device_id: row.device_id, hostname: row.hostname ?? null, values: [] }
+    }
+    byDevice[row.device_id].values.push(row.jitter_ms as number)
+  }
+
+  const topDevices = Object.values(byDevice)
+    .map(({ device_id, hostname, values }) => ({
+      device_id,
+      hostname,
+      avg_jitter: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100,
+    }))
+    .sort((a, b) => b.avg_jitter - a.avg_jitter)
+    .slice(0, 5)
+
+  return { fleetAvg, topDevices }
 }
 
 export default async function DevicesPage({
@@ -51,7 +92,14 @@ export default async function DevicesPage({
     query = query.eq('band', bandFilter)
   }
 
-  const { data: rawResults } = await query
+  const [{ data: rawResults }, { data: baselines }, jitterStats] = await Promise.all([
+    query,
+    supabaseAdmin
+      .from('device_baselines')
+      .select('device_id, mean, std_dev')
+      .eq('metric', 'download_mbps'),
+    getJitterStats(),
+  ])
 
   // Dedup to latest per device
   const seen = new Set<string>()
@@ -72,12 +120,6 @@ export default async function DevicesPage({
       lastPerDevice.push(row)
     }
   }
-
-  // Get download baselines for health computation
-  const { data: baselines } = await supabaseAdmin
-    .from('device_baselines')
-    .select('device_id, mean, std_dev')
-    .eq('metric', 'download_mbps')
 
   const baselineMap = new Map(
     (baselines ?? []).map((b) => [b.device_id, b])
@@ -143,6 +185,17 @@ export default async function DevicesPage({
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <DeviceTable devices={devices} sort={sort} order={order} />
+      </div>
+
+      {/* High Jitter Devices */}
+      <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-900">High Jitter Devices (last 24h)</h2>
+        </div>
+        <JitterProblemDevices
+          devices={jitterStats.topDevices}
+          fleetAvg={jitterStats.fleetAvg}
+        />
       </div>
     </div>
   )
