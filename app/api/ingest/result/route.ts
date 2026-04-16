@@ -177,16 +177,48 @@ export async function POST(request: Request) {
 }
 
 // ---------------------------------------------------------------------------
+// buildSlackMessage
+//
+// Pure function — constructs a human-readable Slack message for an alert.
+// Uses NEXT_PUBLIC_SITE_URL with fallback to VERCEL_URL then localhost.
+// ---------------------------------------------------------------------------
+function buildSlackMessage(
+  metric: string,
+  thresholdValue: number,
+  deviceId: string,
+  actualValue: number,
+  hostname: string | null,
+): string {
+  const host = hostname ?? deviceId
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  const link = `${baseUrl}/admin/devices/${deviceId}`
+  if (metric === 'download_mbps') {
+    return `🔴 Speed alert: ${host} download dropped to ${actualValue.toFixed(1)} Mbps (threshold: ${thresholdValue} Mbps). View device → ${link}`
+  }
+  if (metric === 'upload_mbps') {
+    return `🔴 Speed alert: ${host} upload dropped to ${actualValue.toFixed(1)} Mbps (threshold: ${thresholdValue} Mbps). View device → ${link}`
+  }
+  return `🔴 Latency alert: ${host} latency rose to ${actualValue.toFixed(0)} ms (threshold: ${thresholdValue} ms). View device → ${link}`
+}
+
+// ---------------------------------------------------------------------------
 // checkAlertThresholds
 //
 // Runs asynchronously after every successful speed_results insert.
 // Reads all enabled alert_configs, evaluates thresholds, and writes rows to
 // alert_history for any rule that is violated. Never throws — errors are
-// logged only. Does NOT send Slack webhooks (deferred to Phase 4).
+// logged only.
 //
 // Threshold direction:
 //   download_mbps / upload_mbps — alert if actual < threshold_value (too slow)
 //   latency_ms                  — alert if actual > threshold_value (too high)
+//
+// Deduplication: skips configs that already fired within the last 60 minutes
+// for the same device+config combo. Prevents Slack spam.
+//
+// Z-score branch: evaluates zscore-type configs against device_baselines.
+// Fires when actual deviates more than 2 std devs from the baseline mean.
 // ---------------------------------------------------------------------------
 async function checkAlertThresholds(
   deviceId: string,
@@ -198,7 +230,7 @@ async function checkAlertThresholds(
   try {
     const { data: configs, error } = await supabaseAdmin
       .from('alert_configs')
-      .select('id, metric, threshold_value, scope, scope_device_id')
+      .select('id, metric, threshold_value, alert_type, scope, scope_device_id')
       .eq('enabled', true)
 
     if (error || !configs?.length) return
@@ -209,31 +241,141 @@ async function checkAlertThresholds(
       latency_ms: latency,
     }
 
-    const triggered = configs.filter(cfg => {
-      // Scope check: if scope is 'device', only match the specific device
-      if (cfg.scope === 'device' && cfg.scope_device_id !== deviceId) return false
+    // Threshold configs (alert_type = 'threshold' or null/unset)
+    const thresholdConfigs = configs.filter(
+      (cfg: { alert_type: string | null }) => !cfg.alert_type || cfg.alert_type === 'threshold'
+    )
 
-      const actual = metricMap[cfg.metric]
-      if (actual == null || cfg.threshold_value == null) return false
+    const triggered = thresholdConfigs.filter(
+      (cfg: { scope: string; scope_device_id: string | null; metric: string; threshold_value: number | null }) => {
+        // Scope check: if scope is 'device', only match the specific device
+        if (cfg.scope === 'device' && cfg.scope_device_id !== deviceId) return false
 
-      // For download/upload: alert if BELOW threshold; for latency: alert if ABOVE
-      if (cfg.metric === 'latency_ms') return actual > cfg.threshold_value
-      return actual < cfg.threshold_value
-    })
+        const actual = metricMap[cfg.metric]
+        if (actual == null || cfg.threshold_value == null) return false
 
-    if (!triggered.length) return
+        // For download/upload: alert if BELOW threshold; for latency: alert if ABOVE
+        if (cfg.metric === 'latency_ms') return actual > cfg.threshold_value
+        return actual < cfg.threshold_value
+      }
+    )
 
-    const rows = triggered.map(cfg => ({
+    // --- Dedup: filter configs that fired within the last 60 minutes ---
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const dedupChecks = await Promise.all(
+      triggered.map(async (cfg: { id: number }) => {
+        const { data: recent } = await supabaseAdmin
+          .from('alert_history')
+          .select('id')
+          .eq('config_id', cfg.id)
+          .eq('device_id', deviceId)
+          .gte('triggered_at', oneHourAgo)
+          .limit(1)
+        return recent && recent.length > 0 ? null : cfg
+      })
+    )
+    const toFireThreshold = dedupChecks.filter(Boolean) as typeof triggered
+
+    // --- Z-score anomaly branch ---
+    const zscopeConfigs = configs.filter(
+      (cfg: { alert_type: string | null }) => cfg.alert_type === 'zscore'
+    )
+
+    const { data: baselines } = await supabaseAdmin
+      .from('device_baselines')
+      .select('metric, mean, std_dev')
+      .eq('device_id', deviceId)
+
+    const baselineMap = Object.fromEntries(
+      (baselines ?? []).map((b: { metric: string; mean: number; std_dev: number }) => [
+        b.metric,
+        { mean: b.mean, std_dev: b.std_dev },
+      ])
+    )
+
+    const zscoreTriggered = zscopeConfigs.filter(
+      (cfg: { metric: string; scope: string; scope_device_id: string | null }) => {
+        if (cfg.scope === 'device' && cfg.scope_device_id !== deviceId) return false
+        const actual = metricMap[cfg.metric]
+        const bl = baselineMap[cfg.metric]
+        if (actual == null || !bl || bl.std_dev <= 0) return false
+        const z = Math.abs((actual - bl.mean) / bl.std_dev)
+        return z > 2
+      }
+    )
+
+    // Dedup zscore configs too
+    const zDedupChecks = await Promise.all(
+      zscoreTriggered.map(async (cfg: { id: number }) => {
+        const { data: recent } = await supabaseAdmin
+          .from('alert_history')
+          .select('id')
+          .eq('config_id', cfg.id)
+          .eq('device_id', deviceId)
+          .gte('triggered_at', oneHourAgo)
+          .limit(1)
+        return recent && recent.length > 0 ? null : cfg
+      })
+    )
+    const toFireZscore = zDedupChecks.filter(Boolean) as typeof zscoreTriggered
+
+    const toFireAll = [...toFireThreshold, ...toFireZscore]
+    if (!toFireAll.length) return
+
+    // --- Build alert_history rows ---
+    const resolvedHostname = hostname ?? null
+    const rows = toFireAll.map((cfg: { id: number; metric: string; threshold_value: number }) => ({
       config_id: cfg.id,
       device_id: deviceId,
       metric_value: metricMap[cfg.metric] as number,
-      message: `${cfg.metric} ${cfg.metric === 'latency_ms' ? 'exceeded' : 'dropped below'} threshold of ${cfg.threshold_value}`,
+      message: buildSlackMessage(
+        cfg.metric,
+        cfg.threshold_value,
+        deviceId,
+        metricMap[cfg.metric] as number,
+        resolvedHostname,
+      ),
       delivered: false,
     }))
 
-    const { error: insertError } = await supabaseAdmin.from('alert_history').insert(rows)
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from('alert_history')
+      .insert(rows)
+      .select()
+
     if (insertError) {
       console.error('[ingest/result] alert_history insert error:', insertError)
+      return
+    }
+
+    // --- Fire Slack webhook (fire-and-forget; log failure but always mark delivered) ---
+    const webhookUrl = process.env.SLACK_WEBHOOK_URL
+    if (webhookUrl && rows.length > 0) {
+      await Promise.allSettled(
+        rows.map(async (row) => {
+          try {
+            const resp = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: row.message }),
+            })
+            if (!resp.ok) {
+              console.error('[ingest/result] Slack webhook non-2xx:', resp.status)
+            }
+          } catch (err) {
+            console.error('[ingest/result] Slack webhook fetch error:', err)
+          }
+        })
+      )
+    }
+
+    // --- Mark delivered regardless of Slack outcome ---
+    if (inserted && inserted.length > 0) {
+      const ids = (inserted as { id: number }[]).map((r) => r.id)
+      await supabaseAdmin
+        .from('alert_history')
+        .update({ delivered: true })
+        .in('id', ids)
     }
   } catch (err) {
     console.error('[ingest/result] checkAlertThresholds unexpected error:', err)
