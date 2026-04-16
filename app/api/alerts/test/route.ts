@@ -71,5 +71,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to insert test alert' }, { status: 500 })
   }
 
+  // --- Fire Slack webhook if configured ---
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL
+  if (webhookUrl) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
+        ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+      const testMessage = `🧪 Test alert from Speed Monitor admin. Webhook delivery is working. View admin → ${baseUrl}/admin/alerts`
+      const resp = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: testMessage }),
+      })
+      if (!resp.ok) {
+        console.error('[alerts/test] Slack webhook non-2xx:', resp.status)
+      }
+    } catch (err) {
+      console.error('[alerts/test] Slack webhook error:', err)
+    }
+  }
+  // Return success regardless of Slack outcome (fire-and-forget pattern)
+
   return NextResponse.json({ success: true }, { status: 201 })
 }
