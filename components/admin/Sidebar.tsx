@@ -9,10 +9,42 @@ interface SidebarProps {
 }
 
 const navLinks = [
-  { href: '/admin', label: 'Fleet', abbr: 'F' },
-  { href: '/admin/devices', label: 'Devices', abbr: 'D' },
-  { href: '/admin/trends', label: 'Trends', abbr: 'T' },
-  { href: '/admin/alerts', label: 'Alerts', abbr: 'A' },
+  {
+    href: '/admin',
+    label: 'Fleet',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/devices',
+    label: 'Devices',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/trends',
+    label: 'Trends',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/alerts',
+    label: 'Alerts',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+      </svg>
+    ),
+  },
 ]
 
 export default function Sidebar({ userEmail }: SidebarProps) {
@@ -26,29 +58,29 @@ export default function Sidebar({ userEmail }: SidebarProps) {
   }
 
   function isActive(href: string) {
-    if (href === '/admin') {
-      return pathname === '/admin'
-    }
-    return pathname.startsWith(href)
+    return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href)
   }
 
   return (
-    <aside className="w-56 h-full bg-gray-900 flex flex-col shrink-0">
+    <aside className="w-56 h-full bg-gray-950 flex flex-col shrink-0 border-r border-gray-800">
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+      <div className="px-4 py-5 border-b border-gray-800">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
             </svg>
           </div>
-          <span className="text-white font-semibold text-sm">Speed Monitor</span>
+          <div>
+            <p className="text-white font-semibold text-sm leading-tight">Speed Monitor</p>
+            <p className="text-gray-500 text-xs leading-tight">IT Admin</p>
+          </div>
         </div>
       </div>
 
       {/* Nav links */}
-      <nav className="flex-1 px-2 py-4 space-y-1">
-        {navLinks.map(({ href, label, abbr }) => {
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
+        {navLinks.map(({ href, label, icon }) => {
           const active = isActive(href)
           return (
             <Link
@@ -56,13 +88,11 @@ export default function Sidebar({ userEmail }: SidebarProps) {
               href={href}
               className={
                 active
-                  ? 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium bg-gray-700 text-white'
-                  : 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors'
+                  ? 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white'
+                  : 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors'
               }
             >
-              <span className="w-5 h-5 flex items-center justify-center rounded text-xs font-bold bg-gray-600 text-gray-200">
-                {abbr}
-              </span>
+              {icon}
               {label}
             </Link>
           )
@@ -70,14 +100,17 @@ export default function Sidebar({ userEmail }: SidebarProps) {
       </nav>
 
       {/* User + sign out */}
-      <div className="px-3 py-4 border-t border-gray-700">
-        <p className="text-xs text-gray-500 truncate mb-2" title={userEmail}>
+      <div className="px-3 py-4 border-t border-gray-800">
+        <p className="text-xs text-gray-500 truncate mb-2 px-2" title={userEmail}>
           {userEmail}
         </p>
         <button
           onClick={handleSignOut}
-          className="w-full text-left text-xs text-gray-400 hover:text-white transition-colors px-2 py-1.5 rounded hover:bg-gray-800"
+          className="w-full flex items-center gap-2 text-left text-xs text-gray-500 hover:text-white transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-800"
         >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
           Sign out
         </button>
       </div>
