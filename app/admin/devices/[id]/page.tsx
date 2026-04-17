@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { computeHealthStatus, HEALTH_LABELS, HealthStatus } from '@/lib/admin/health'
 import { generateRecommendations } from '@/lib/admin/recommendations'
@@ -44,7 +45,7 @@ export default async function DeviceDetailPage({
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   // Parallel data fetching
-  const [last20Result, chart24hResult, baselineResult] = await Promise.all([
+  const [last20Result, chart24hResult, baselineResult, chart7dResult] = await Promise.all([
     // 1. Last 20 speed results
     supabaseAdmin
       .from('speed_results')
@@ -68,10 +69,19 @@ export default async function DeviceDetailPage({
       .eq('device_id', deviceId)
       .eq('metric', 'download_mbps')
       .maybeSingle(),
+    // 4. Last 7 days for chart toggle
+    supabaseAdmin
+      .from('speed_results')
+      .select('timestamp_utc, download_mbps, upload_mbps')
+      .eq('device_id', deviceId)
+      .gte('timestamp_utc', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('timestamp_utc', { ascending: true })
+      .limit(1500),
   ])
 
   const last20Tests = last20Result.data ?? []
   const chart24hData = chart24hResult.data ?? []
+  const chart7dData = chart7dResult.data ?? []
   const baseline = baselineResult.data
 
   const lastTest = last20Tests[0] ?? null
@@ -146,138 +156,137 @@ export default async function DeviceDetailPage({
 
       {/* Tab content */}
       <div className="px-6 py-6">
-        <DeviceTabs defaultTab="overview">
-          {{
-            overview: (
-              <div className="space-y-6">
-                {/* 24h speed chart */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h2 className="text-base font-semibold text-gray-900 mb-4">
-                    Speed — Last 24 Hours
-                  </h2>
-                  <DeviceSpeedChart data={chart24hData} />
-                </div>
+        <Suspense fallback={<div className="h-8 w-48 bg-gray-100 rounded animate-pulse" />}>
+          <DeviceTabs>
+            {{
+              overview: (
+                <div className="space-y-6">
+                  {/* Speed chart with 24h/7d toggle */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <DeviceSpeedChart data24h={chart24hData} data7d={chart7dData} />
+                  </div>
 
-                {/* Recommendations */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h2 className="text-base font-semibold text-gray-900 mb-3">
-                    Recommendations
-                  </h2>
-                  <ul className="space-y-2">
-                    {recommendations.map((rec, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                        <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Recommendations */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h2 className="text-base font-semibold text-gray-900 mb-3">
+                      Recommendations
+                    </h2>
+                    <ul className="space-y-2">
+                      {recommendations.map((rec, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                          <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            ),
+              ),
 
-            history: (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-base font-semibold text-gray-900">
-                    Test History (last 20)
-                  </h2>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <tr>
-                        <th className="px-4 py-3">Timestamp</th>
-                        <th className="px-4 py-3 text-right">Download (Mbps)</th>
-                        <th className="px-4 py-3 text-right">Upload (Mbps)</th>
-                        <th className="px-4 py-3 text-right">Latency (ms)</th>
-                        <th className="px-4 py-3 text-right">Jitter (ms)</th>
-                        <th className="px-4 py-3">SSID</th>
-                        <th className="px-4 py-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {last20Tests.length === 0 ? (
+              history: (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h2 className="text-base font-semibold text-gray-900">
+                      Test History (last 20)
+                    </h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider">
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
-                            No test history available
-                          </td>
+                          <th className="px-4 py-3">Timestamp</th>
+                          <th className="px-4 py-3 text-right">Download (Mbps)</th>
+                          <th className="px-4 py-3 text-right">Upload (Mbps)</th>
+                          <th className="px-4 py-3 text-right">Latency (ms)</th>
+                          <th className="px-4 py-3 text-right">Jitter (ms)</th>
+                          <th className="px-4 py-3">SSID</th>
+                          <th className="px-4 py-3">Status</th>
                         </tr>
-                      ) : (
-                        last20Tests.map((test) => (
-                          <tr key={test.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                              {test.timestamp_utc
-                                ? new Date(test.timestamp_utc).toLocaleString()
-                                : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                              {test.download_mbps != null
-                                ? test.download_mbps.toFixed(1)
-                                : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                              {test.upload_mbps != null
-                                ? test.upload_mbps.toFixed(1)
-                                : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                              {test.latency_ms != null ? test.latency_ms : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                              {test.jitter_ms != null ? test.jitter_ms : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600">
-                              {test.ssid ?? '—'}
-                            </td>
-                            <td
-                              className="px-4 py-3 font-medium capitalize text-gray-700"
-                              style={{ backgroundColor: statusCellColor(test.status) }}
-                            >
-                              {test.status ?? '—'}
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {last20Tests.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                              No test history available
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          last20Tests.map((test) => (
+                            <tr key={test.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                                {test.timestamp_utc
+                                  ? new Date(test.timestamp_utc).toLocaleString()
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                                {test.download_mbps != null
+                                  ? test.download_mbps.toFixed(1)
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                                {test.upload_mbps != null
+                                  ? test.upload_mbps.toFixed(1)
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                                {test.latency_ms != null ? test.latency_ms : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                                {test.jitter_ms != null ? test.jitter_ms : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600">
+                                {test.ssid ?? '—'}
+                              </td>
+                              <td
+                                className="px-4 py-3 font-medium capitalize text-gray-700"
+                                style={{ backgroundColor: statusCellColor(test.status) }}
+                              >
+                                {test.status ?? '—'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ),
+              ),
 
-            wifi: (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h2 className="text-base font-semibold text-gray-900 mb-4">
-                  WiFi Details
-                </h2>
-                {lastTest == null ? (
-                  <p className="text-gray-400 text-sm">No data available</p>
-                ) : (
-                  <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-5">
-                    {[
-                      { label: 'SSID', value: lastTest.ssid },
-                      { label: 'Band', value: lastTest.band },
-                      { label: 'Channel', value: lastTest.channel },
-                      { label: 'RSSI (dBm)', value: lastTest.rssi_dbm },
-                      { label: 'MCS Index', value: lastTest.mcs_index },
-                      { label: 'Channel Width', value: lastTest.channel_width },
-                      { label: 'VPN Status', value: lastTest.vpn_status },
-                      { label: 'VPN Name', value: lastTest.vpn_name },
-                    ].map(({ label, value }) => (
-                      <div key={label}>
-                        <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                          {label}
-                        </dt>
-                        <dd className="mt-1 text-sm font-semibold text-gray-900">
-                          {value != null ? String(value) : '—'}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </div>
-            ),
-          }}
-        </DeviceTabs>
+              wifi: (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h2 className="text-base font-semibold text-gray-900 mb-4">
+                    WiFi Details
+                  </h2>
+                  {lastTest == null ? (
+                    <p className="text-gray-400 text-sm">No data available</p>
+                  ) : (
+                    <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-5">
+                      {[
+                        { label: 'SSID', value: lastTest.ssid },
+                        { label: 'Band', value: lastTest.band },
+                        { label: 'Channel', value: lastTest.channel },
+                        { label: 'RSSI (dBm)', value: lastTest.rssi_dbm },
+                        { label: 'MCS Index', value: lastTest.mcs_index },
+                        { label: 'Channel Width', value: lastTest.channel_width },
+                        { label: 'VPN Status', value: lastTest.vpn_status },
+                        { label: 'VPN Name', value: lastTest.vpn_name },
+                      ].map(({ label, value }) => (
+                        <div key={label}>
+                          <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            {label}
+                          </dt>
+                          <dd className="mt-1 text-sm font-semibold text-gray-900">
+                            {value != null ? String(value) : '—'}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              ),
+            }}
+          </DeviceTabs>
+        </Suspense>
       </div>
     </div>
   )

@@ -151,7 +151,7 @@ export default function EmployeeDashboard({
       <Section title="24-hour speed history" defaultOpen={false}>
         <div className="pt-2">
           {chart24hData.length > 0 ? (
-            <DeviceSpeedChart data={chart24hData} />
+            <DeviceSpeedChart data24h={chart24hData} data7d={[]} />
           ) : (
             <p className="text-gray-500 text-sm py-4 text-center">
               No data in the last 24 hours

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
@@ -50,6 +51,7 @@ const navLinks = [
 export default function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const [collapsed, setCollapsed] = useState(false)
 
   async function handleSignOut() {
     const supabase = createSupabaseBrowserClient()
@@ -62,20 +64,44 @@ export default function Sidebar({ userEmail }: SidebarProps) {
   }
 
   return (
-    <aside className="w-56 h-full bg-gray-950 flex flex-col shrink-0 border-r border-gray-800">
-      {/* Logo */}
-      <div className="px-4 py-5 border-b border-gray-800">
-        <div className="flex items-center gap-2.5">
+    <aside className={`h-full bg-gray-950 flex flex-col shrink-0 border-r border-gray-800 transition-all duration-200 ${collapsed ? 'w-14' : 'w-56'}`}>
+      {/* Logo + collapse toggle */}
+      <div className={`px-3 py-5 border-b border-gray-800 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
+        {!collapsed && (
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm leading-tight">Speed Monitor</p>
+              <p className="text-gray-500 text-xs leading-tight">IT Admin</p>
+            </div>
+          </div>
+        )}
+        {collapsed && (
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
             </svg>
           </div>
-          <div>
-            <p className="text-white font-semibold text-sm leading-tight">Speed Monitor</p>
-            <p className="text-gray-500 text-xs leading-tight">IT Admin</p>
-          </div>
-        </div>
+        )}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="text-gray-500 hover:text-white transition-colors p-1 rounded ml-auto"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          )}
+        </button>
       </div>
 
       {/* Nav links */}
@@ -86,14 +112,15 @@ export default function Sidebar({ userEmail }: SidebarProps) {
             <Link
               key={href}
               href={href}
-              className={
+              title={collapsed ? label : undefined}
+              className={`flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors ${collapsed ? 'justify-center' : ''} ${
                 active
-                  ? 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white'
-                  : 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors'
-              }
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
             >
               {icon}
-              {label}
+              {!collapsed && <span>{label}</span>}
             </Link>
           )
         })}
@@ -101,17 +128,20 @@ export default function Sidebar({ userEmail }: SidebarProps) {
 
       {/* User + sign out */}
       <div className="px-3 py-4 border-t border-gray-800">
-        <p className="text-xs text-gray-500 truncate mb-2 px-2" title={userEmail}>
-          {userEmail}
-        </p>
+        {!collapsed && (
+          <p className="text-xs text-gray-500 truncate mb-2 px-2" title={userEmail}>
+            {userEmail}
+          </p>
+        )}
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-2 text-left text-xs text-gray-500 hover:text-white transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-800"
+          title={collapsed ? 'Sign out' : undefined}
+          className={`w-full flex items-center gap-2 text-xs text-gray-500 hover:text-white transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-800 ${collapsed ? 'justify-center' : 'text-left'}`}
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
-          Sign out
+          {!collapsed && <span>Sign out</span>}
         </button>
       </div>
     </aside>

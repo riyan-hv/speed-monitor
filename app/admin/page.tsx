@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { computeHealthStatus, HealthStatus } from '@/lib/admin/health'
 import StatCard from '@/components/admin/StatCard'
 import DeviceHeatmap from '@/components/admin/DeviceHeatmap'
+import HealthSummaryStrip from '@/components/admin/HealthSummaryStrip'
+import Sparkline from '@/components/admin/Sparkline'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,6 +83,26 @@ async function getDevicesForHeatmap(): Promise<DeviceCell[]> {
   })
 }
 
+async function getFleetSparkline(): Promise<{ value: number }[]> {
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data } = await supabaseAdmin
+    .from('speed_results')
+    .select('timestamp_utc, download_mbps')
+    .gte('timestamp_utc', since24h)
+    .order('timestamp_utc', { ascending: true })
+
+  const rows = (data ?? []).filter(r => r.download_mbps != null)
+  // Bucket into 24 hourly slots
+  const buckets: number[][] = Array.from({ length: 24 }, () => [])
+  for (const row of rows) {
+    const hour = new Date(row.timestamp_utc as string).getUTCHours()
+    buckets[hour].push(row.download_mbps as number)
+  }
+  return buckets.map(b =>
+    b.length > 0 ? { value: Math.round((b.reduce((a, c) => a + c, 0) / b.length) * 10) / 10 } : { value: 0 }
+  )
+}
+
 function relativeTime(isoString: string | null): string {
   if (!isoString) return 'Never'
   const diff = Date.now() - new Date(isoString).getTime()
@@ -93,14 +115,37 @@ function relativeTime(isoString: string | null): string {
 }
 
 export default async function AdminPage() {
-  const [stats, devices] = await Promise.all([getFleetStats(), getDevicesForHeatmap()])
+  const [stats, devices, sparklineData] = await Promise.all([
+    getFleetStats(),
+    getDevicesForHeatmap(),
+    getFleetSparkline(),
+  ])
+
+  const healthCounts = {
+    critical: devices.filter(d => d.health === 'red').length,
+    warning:  devices.filter(d => d.health === 'yellow').length,
+    healthy:  devices.filter(d => d.health === 'green').length,
+    unknown:  devices.filter(d => d.health === 'unknown').length,
+    total:    devices.length,
+  }
 
   return (
     <div className="p-8">
       {/* Page header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Fleet Overview</h1>
         <p className="text-sm text-gray-500 mt-1">Network performance across all devices · last 24 hours</p>
+      </div>
+
+      {/* Health summary strip */}
+      <div className="mb-6">
+        <HealthSummaryStrip
+          critical={healthCounts.critical}
+          warning={healthCounts.warning}
+          healthy={healthCounts.healthy}
+          unknown={healthCounts.unknown}
+          total={healthCounts.total}
+        />
       </div>
 
       {/* Stat cards */}
@@ -152,6 +197,15 @@ export default async function AdminPage() {
             </svg>
           }
         />
+      </div>
+
+      {/* 24h Fleet Download Trend */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 pt-4 pb-3 mb-8">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-gray-600">Fleet Avg Download — last 24 hours</p>
+          <p className="text-xs text-gray-400">hourly avg · Mbps</p>
+        </div>
+        <Sparkline data={sparklineData} color="#6366f1" />
       </div>
 
       {/* Needs Attention */}
