@@ -62,11 +62,23 @@ unzip -q "$TMP_ZIP" -d "$HOME/Applications/"
 rm -f "$TMP_ZIP"
 log "SpeedMonitor.app installed to ~/Applications/"
 
-# 5. Provision API key
+# 5. Provision API key (reuse existing device_id on reinstall so the same device
+#    is updated in the dashboard rather than creating a duplicate entry)
 log "Provisioning API key from server..."
+EXISTING_DEVICE_ID=""
+[[ -f "$CONFIG_DIR/device_id" ]] && EXISTING_DEVICE_ID=$(tr -d '[:space:]' < "$CONFIG_DIR/device_id" 2>/dev/null || true)
+
+if [[ -n "$EXISTING_DEVICE_ID" ]]; then
+    PROVISION_BODY="{\"device_id\":\"$EXISTING_DEVICE_ID\"}"
+    log "Re-provisioning existing device: $EXISTING_DEVICE_ID"
+else
+    PROVISION_BODY="{}"
+fi
+
 PROVISION=$(curl -s -X POST \
     --max-time 15 --connect-timeout 5 \
     -H "Content-Type: application/json" \
+    -d "$PROVISION_BODY" \
     "$SERVER_URL/api/ingest/provision" 2>/dev/null || true)
 
 DEVICE_ID=$(python3 -c \

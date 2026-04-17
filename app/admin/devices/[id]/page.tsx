@@ -190,27 +190,27 @@ export default async function DeviceDetailPage({
                                 ? new Date(test.timestamp_utc).toLocaleString()
                                 : '—'}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
+                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                               {test.download_mbps != null
                                 ? test.download_mbps.toFixed(1)
                                 : '—'}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
+                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                               {test.upload_mbps != null
                                 ? test.upload_mbps.toFixed(1)
                                 : '—'}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
+                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                               {test.latency_ms != null ? test.latency_ms : '—'}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
+                            <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                               {test.jitter_ms != null ? test.jitter_ms : '—'}
                             </td>
                             <td className="px-4 py-3 text-gray-600">
                               {test.ssid ?? '—'}
                             </td>
                             <td
-                              className="px-4 py-3 font-medium capitalize"
+                              className="px-4 py-3 font-medium capitalize text-gray-700"
                               style={{ backgroundColor: statusCellColor(test.status) }}
                             >
                               {test.status ?? '—'}
