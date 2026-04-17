@@ -10,6 +10,12 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-admin-bg: #f9fafb;
+  --color-admin-sidebar: #030712;
+  --color-admin-border: #e5e7eb;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-admin-card: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
