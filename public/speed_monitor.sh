@@ -976,7 +976,7 @@ post_result() {
         --max-time 30 --connect-timeout 10 \
         -X POST "$SERVER_URL/api/ingest/result" \
         -H "Content-Type: application/json" \
-        -H "X-Api-Key: $API_KEY" \
+        -H "X-Api-Key: $DEVICE_ID:$API_KEY" \
         -d "$payload" \
         2>/dev/null)
     if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
@@ -1384,6 +1384,14 @@ collect_metrics() {
     echo "Status: $STATUS"
     echo "Results saved to: $CSV_FILE"
 
+    # Write last_result.txt for SpeedMonitor.app menu bar display
+    local _result_file="$DATA_DIR/last_result.txt"
+    local _tmp_result
+    _tmp_result=$(mktemp "${_result_file}.XXXXXX")
+    printf 'DOWNLOAD_MBPS=%s\nUPLOAD_MBPS=%s\nLATENCY_MS=%s\nJITTER_MS=%s\nTIMESTAMP=%s\n' \
+        "$DOWNLOAD_MBPS" "$UPLOAD_MBPS" "$LATENCY_MS" "$JITTER_MS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_tmp_result"
+    mv "$_tmp_result" "$_result_file"
+
     log "Test completed"
 
     # Check for and execute remote commands
@@ -1403,7 +1411,7 @@ check_remote_commands() {
         return
     fi
     local response=$(curl -s --max-time 10 \
-        -H "X-Api-Key: $API_KEY" \
+        -H "X-Api-Key: $DEVICE_ID:$API_KEY" \
         "$SERVER_URL/api/commands/$DEVICE_ID" 2>/dev/null)
 
     if [[ -z "$response" ]]; then
@@ -1460,7 +1468,7 @@ check_remote_commands() {
         if [[ -n "$cmd_id" ]]; then
             curl -s --max-time 10 -X POST "$SERVER_URL/api/commands/$cmd_id/result" \
                 -H "Content-Type: application/json" \
-                -H "X-Api-Key: $API_KEY" \
+                -H "X-Api-Key: $DEVICE_ID:$API_KEY" \
                 -d "{\"status\":\"$status\",\"result\":\"$(echo "$result" | head -c 500 | sed 's/"/\\"/g' | tr '\n' ' ')\"}" \
                 >/dev/null 2>&1
         fi
