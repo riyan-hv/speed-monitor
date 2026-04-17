@@ -8,6 +8,6 @@ const PKG_PATH = '/SpeedMonitor-4.0.0.pkg'
 
 export async function GET() {
   const base =
-    process.env.NEXT_PUBLIC_SITE_URL ?? 'https://speed-monitor.vercel.app'
+    process.env.NEXT_PUBLIC_SITE_URL ?? 'https://speed-monitor-six.vercel.app'
   return NextResponse.redirect(new URL(PKG_PATH, base))
 }

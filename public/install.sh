@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SpeedMonitor v4.0.0 — Manual installer
-# Usage: curl -fsSL https://speed-monitor.vercel.app/install.sh | bash
+# Usage: curl -fsSL https://speed-monitor-six.vercel.app/install.sh | bash
 #
 # What this does:
 #   1. Downloads speed_monitor.sh into ~/.local/bin/
@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-SERVER_URL="https://speed-monitor.vercel.app"
+SERVER_URL="https://speed-monitor-six.vercel.app"
 CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
 DATA_DIR="$HOME/.local/share/nkspeedtest"
