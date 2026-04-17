@@ -3,12 +3,14 @@
 # Usage: curl -fsSL https://speed-monitor-six.vercel.app/install.sh | bash
 #
 # What this does:
-#   1. Downloads speed_monitor.sh into ~/.local/bin/
-#   2. Downloads and installs SpeedMonitor.app into ~/Applications/
-#   3. Writes ~/.config/nkspeedtest/server_url
-#   4. Provisions an API key from the server
-#   5. Writes device_id and api_key to ~/.config/nkspeedtest/
-#   6. Installs and loads the LaunchAgent (runs speed test every 10 min)
+#   1. Stops and removes any previous SpeedMonitor installation
+#   2. Downloads speed_monitor.sh into ~/.local/bin/
+#   3. Downloads and installs SpeedMonitor.app into ~/Applications/
+#   4. Writes ~/.config/nkspeedtest/server_url
+#   5. Provisions an API key from the server
+#   6. Writes device_id and api_key to ~/.config/nkspeedtest/
+#   7. Installs and loads the LaunchAgent (runs speed test every 10 min)
+#   8. Launches SpeedMonitor.app
 
 set -euo pipefail
 
@@ -24,6 +26,13 @@ log() { echo "[SpeedMonitor install] $*"; }
 die() { echo "[SpeedMonitor install] ERROR: $*" >&2; exit 1; }
 
 log "Starting SpeedMonitor v4.0.0 installation..."
+
+# 0. Stop and clean up any previous installation
+log "Stopping previous installation (if any)..."
+killall SpeedMonitor 2>/dev/null || true
+launchctl unload "$PLIST" 2>/dev/null || true
+# Also unload old system-level daemon if it exists
+sudo launchctl unload /Library/LaunchDaemons/com.speedmonitor.plist 2>/dev/null || true
 
 # 1. Create directories
 mkdir -p "$CONFIG_DIR" "$BIN_DIR" "$DATA_DIR" "$LAUNCH_AGENTS" "$HOME/Applications"
@@ -42,7 +51,6 @@ log "server_url set to $SERVER_URL"
 log "Downloading SpeedMonitor.app..."
 TMP_ZIP=$(mktemp /tmp/SpeedMonitor-XXXXXX.zip)
 curl -fsSL "$SERVER_URL/SpeedMonitor.app.zip" -o "$TMP_ZIP"
-# Remove existing app before expanding
 rm -rf "$APP_DEST"
 unzip -q "$TMP_ZIP" -d "$HOME/Applications/"
 rm -f "$TMP_ZIP"
@@ -56,11 +64,11 @@ PROVISION=$(curl -s -X POST \
     "$SERVER_URL/api/ingest/provision" 2>/dev/null || true)
 
 DEVICE_ID=$(python3 -c \
-    "import sys,json; d=json.loads('''$PROVISION'''); print(d['device_id'])" \
-    2>/dev/null || true)
+    "import sys,json; d=json.loads(sys.stdin.read()); print(d['device_id'])" \
+    <<< "$PROVISION" 2>/dev/null || true)
 API_KEY=$(python3 -c \
-    "import sys,json; d=json.loads('''$PROVISION'''); print(d['api_key'])" \
-    2>/dev/null || true)
+    "import sys,json; d=json.loads(sys.stdin.read()); print(d['api_key'])" \
+    <<< "$PROVISION" 2>/dev/null || true)
 
 if [[ -n "$DEVICE_ID" && -n "$API_KEY" ]]; then
     printf '%s\n' "$DEVICE_ID" > "$CONFIG_DIR/device_id"
@@ -97,16 +105,19 @@ cat > "$PLIST" << PLIST_EOF
 </plist>
 PLIST_EOF
 
-# 7. Load LaunchAgent (unload first for idempotency)
-launchctl unload "$PLIST" 2>/dev/null || true
+# 7. Load LaunchAgent
 launchctl load "$PLIST"
 log "LaunchAgent loaded — speed tests will run every 10 minutes"
+
+# 8. Launch the new SpeedMonitor.app
+log "Launching SpeedMonitor.app..."
+open "$APP_DEST"
 
 echo ""
 echo "SpeedMonitor v4.0.0 installation complete."
 echo ""
 echo "Next steps:"
-echo "  1. Open ~/Applications/SpeedMonitor.app to see the menu bar icon"
+echo "  1. Look for the SpeedMonitor icon in your menu bar"
 echo "  2. The first speed test runs automatically within ~30 seconds"
 echo "  3. Your device will appear in the IT dashboard within ~5 minutes"
 echo ""
