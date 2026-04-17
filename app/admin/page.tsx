@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { computeHealthStatus, HealthStatus } from '@/lib/admin/health'
 import StatCard from '@/components/admin/StatCard'
@@ -80,6 +81,17 @@ async function getDevicesForHeatmap(): Promise<DeviceCell[]> {
   })
 }
 
+function relativeTime(isoString: string | null): string {
+  if (!isoString) return 'Never'
+  const diff = Date.now() - new Date(isoString).getTime()
+  const minutes = Math.floor(diff / 60_000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 export default async function AdminPage() {
   const [stats, devices] = await Promise.all([getFleetStats(), getDevicesForHeatmap()])
 
@@ -141,6 +153,58 @@ export default async function AdminPage() {
           }
         />
       </div>
+
+      {/* Needs Attention */}
+      {(() => {
+        const problems = devices.filter((d) => d.health === 'red' || d.health === 'yellow')
+        if (problems.length === 0) return null
+        return (
+          <div className="mb-8 bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-amber-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h2 className="text-sm font-semibold text-gray-900">Needs Attention</h2>
+                <span className="text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-full">{problems.length} device{problems.length !== 1 ? 's' : ''}</span>
+              </div>
+              <Link href="/admin/devices" className="text-xs text-indigo-600 hover:underline">View all →</Link>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {problems.slice(0, 5).map((d) => (
+                <Link
+                  key={d.device_id}
+                  href={`/admin/devices/${d.device_id}`}
+                  className="flex items-center justify-between px-6 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: d.health === 'red' ? '#ef4444' : '#facc15' }}
+                    />
+                    <span className="text-sm font-medium text-gray-900">
+                      {d.hostname ?? <span className="font-mono text-xs text-gray-400">{d.device_id.slice(0, 12)}…</span>}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-6 text-xs text-gray-500">
+                    {d.last_download != null && (
+                      <span>↓ <strong className="text-gray-700">{d.last_download.toFixed(1)}</strong> Mbps</span>
+                    )}
+                    <span className="text-gray-400">
+                      {d.health === 'red' ? '⚠ Critical' : '⚡ Warning'}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+              {problems.length > 5 && (
+                <div className="px-6 py-3 text-xs text-gray-400 text-center">
+                  +{problems.length - 5} more — <Link href="/admin/devices" className="text-indigo-600 hover:underline">see all</Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Device health heatmap */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">

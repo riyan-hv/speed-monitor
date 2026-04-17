@@ -174,14 +174,25 @@ export default async function DevicesPage({
     return 0
   })
 
+  const criticalCount = devices.filter((d) => d.health === 'red').length
+  const warningCount  = devices.filter((d) => d.health === 'yellow').length
+
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">
-        Devices
-        <span className="ml-2 text-sm font-normal text-gray-500">
-          ({devices.length} total)
-        </span>
-      </h1>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Devices</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {devices.length} total
+            {criticalCount > 0 && (
+              <span className="ml-2 text-red-600 font-medium">· {criticalCount} critical</span>
+            )}
+            {warningCount > 0 && (
+              <span className="ml-2 text-amber-600 font-medium">· {warningCount} warning</span>
+            )}
+          </p>
+        </div>
+      </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <DeviceTable devices={devices} sort={sort} order={order} />
