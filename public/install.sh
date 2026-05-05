@@ -33,7 +33,8 @@ if [[ "$(id -u)" == "0" ]]; then
     fi
 
     echo "[SpeedMonitor install] Running as root — re-launching as $CONSOLE_USER..."
-    TMP=$(mktemp /tmp/speedmonitor_install_XXXXXX.sh)
+    rm -f /tmp/speedmonitor_install_* 2>/dev/null || true  # clean up any stale temp files
+    TMP=$(mktemp /tmp/speedmonitor_install_XXXXXX)         # no suffix — macOS mktemp requires X's at end
     curl -fsSL "https://speed-monitor-six.vercel.app/install.sh" -o "$TMP"
     chmod 755 "$TMP"
     exec sudo -u "$CONSOLE_USER" HOME="/Users/$CONSOLE_USER" USER="$CONSOLE_USER" /bin/bash "$TMP"
@@ -176,8 +177,11 @@ cat > "$PLIST" << PLIST_EOF
 </plist>
 PLIST_EOF
 
-# 7. Load LaunchAgent
-launchctl load "$PLIST"
+# 7. Load LaunchAgent (try modern bootstrap first, fall back to legacy load)
+launchctl unload "$PLIST" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || \
+    launchctl load "$PLIST" 2>/dev/null || \
+    log "WARNING: LaunchAgent could not be loaded — speed tests will not run automatically"
 log "LaunchAgent loaded — speed tests will run every 10 minutes"
 
 # 8. Launch the new SpeedMonitor.app
