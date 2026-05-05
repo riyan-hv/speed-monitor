@@ -6,6 +6,7 @@ import { generateRecommendations } from '@/lib/admin/recommendations'
 import DeviceSpeedChart from '@/components/admin/DeviceSpeedChart'
 import DeviceTabs from '@/components/admin/DeviceTabs'
 import DeleteDeviceButton from '@/components/admin/DeleteDeviceButton'
+import LocalTime from '@/components/admin/LocalTime'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,19 +35,26 @@ function statusCellColor(status: string | null): string {
   return 'transparent'
 }
 
+const HISTORY_PER_PAGE = 100
+
 export default async function DeviceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string; page?: string }>
 }) {
   // Await params — Next.js 16 requirement
   const { id: deviceId } = await params
+  const { page: pageStr } = await searchParams
+  const historyPage = Math.max(1, parseInt(pageStr ?? '1', 10))
 
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const since60d = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
 
   // Parallel data fetching
-  const [last20Result, chart24hResult, baselineResult, chart7dResult] = await Promise.all([
-    // 1. Last 20 speed results
+  const [last20Result, chart24hResult, baselineResult, chart7dResult, historyResult] = await Promise.all([
+    // 1. Last 20 for health / recommendations / wifi tab
     supabaseAdmin
       .from('speed_results')
       .select(
@@ -77,12 +85,25 @@ export default async function DeviceDetailPage({
       .gte('timestamp_utc', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order('timestamp_utc', { ascending: true })
       .limit(1500),
+    // 5. Paginated 60-day history for history tab
+    supabaseAdmin
+      .from('speed_results')
+      .select('id, timestamp_utc, download_mbps, upload_mbps, latency_ms, jitter_ms, ssid, status', { count: 'exact' })
+      .eq('device_id', deviceId)
+      .gte('timestamp_utc', since60d)
+      .order('timestamp_utc', { ascending: false })
+      .range((historyPage - 1) * HISTORY_PER_PAGE, historyPage * HISTORY_PER_PAGE - 1),
   ])
 
   const last20Tests = last20Result.data ?? []
   const chart24hData = chart24hResult.data ?? []
   const chart7dData = chart7dResult.data ?? []
   const baseline = baselineResult.data
+  const historyTests = historyResult.data ?? []
+  const historyTotal = historyResult.count ?? 0
+  const historyFrom = historyTotal === 0 ? 0 : (historyPage - 1) * HISTORY_PER_PAGE + 1
+  const historyTo = Math.min(historyPage * HISTORY_PER_PAGE, historyTotal)
+  const historyPageCount = Math.ceil(historyTotal / HISTORY_PER_PAGE)
 
   const lastTest = last20Tests[0] ?? null
 
@@ -140,7 +161,7 @@ export default async function DeviceDetailPage({
           {/* Actions */}
           <div className="flex items-center gap-2 flex-wrap">
             <a
-              href={`/api/devices/${deviceId}/export?days=30`}
+              href={`/api/devices/${deviceId}/export?days=60`}
               download
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
             >
@@ -185,10 +206,15 @@ export default async function DeviceDetailPage({
 
               history: (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-200">
+                  <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h2 className="text-base font-semibold text-gray-900">
-                      Test History (last 20)
+                      Test History (last 60 days)
                     </h2>
+                    <span className="text-xs text-gray-400">
+                      {historyTotal > 0
+                        ? `Showing ${historyFrom}–${historyTo} of ${historyTotal}`
+                        : 'No tests'}
+                    </span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -204,18 +230,18 @@ export default async function DeviceDetailPage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {last20Tests.length === 0 ? (
+                        {historyTests.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
-                              No test history available
+                              No test history in the last 60 days
                             </td>
                           </tr>
                         ) : (
-                          last20Tests.map((test) => (
+                          historyTests.map((test) => (
                             <tr key={test.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                                 {test.timestamp_utc
-                                  ? new Date(test.timestamp_utc).toLocaleString()
+                                  ? <LocalTime utc={test.timestamp_utc} />
                                   : '—'}
                               </td>
                               <td className="px-4 py-3 text-right tabular-nums text-gray-700">
@@ -249,6 +275,32 @@ export default async function DeviceDetailPage({
                       </tbody>
                     </table>
                   </div>
+                  {/* Pagination */}
+                  {historyPageCount > 1 && (
+                    <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between text-sm">
+                      <span className="text-gray-500">
+                        Page {historyPage} of {historyPageCount}
+                      </span>
+                      <div className="flex gap-2">
+                        {historyPage > 1 && (
+                          <Link
+                            href={`?tab=history&page=${historyPage - 1}`}
+                            className="px-3 py-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-xs font-medium"
+                          >
+                            ← Previous
+                          </Link>
+                        )}
+                        {historyPage < historyPageCount && (
+                          <Link
+                            href={`?tab=history&page=${historyPage + 1}`}
+                            className="px-3 py-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-xs font-medium"
+                          >
+                            Next →
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ),
 
