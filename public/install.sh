@@ -14,6 +14,19 @@
 
 set -euo pipefail
 
+# When run as root via Jamf, $HOME is unset or /var/root.
+# Detect the actual logged-in console user and run as them.
+if [[ -z "${HOME:-}" ]] || [[ "${HOME:-}" == "/var/root" ]]; then
+    CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null || echo "")
+    if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" ]]; then
+        export HOME="/Users/$CONSOLE_USER"
+        export USER="$CONSOLE_USER"
+    else
+        echo "[SpeedMonitor install] ERROR: Could not detect logged-in user. Run as the target user, not root." >&2
+        exit 1
+    fi
+fi
+
 SERVER_URL="https://speed-monitor-six.vercel.app"
 CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
