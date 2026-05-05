@@ -14,14 +14,24 @@
 
 set -euo pipefail
 
-# When run as root via Jamf, Homebrew refuses to install.
-# Re-download the script to a temp file and re-exec as the logged-in console user.
+# When run as root via Jamf: install speedtest-cli system-wide (pip3, no admin needed),
+# then re-exec as the logged-in console user for the rest of the install.
+# Homebrew refuses root AND requires the user to be an admin — avoid both.
 if [[ "$(id -u)" == "0" ]]; then
     CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null || echo "")
     if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
         echo "[SpeedMonitor install] ERROR: No user logged in at console. Deploy when a user is active." >&2
         exit 1
     fi
+
+    # Install speedtest-cli as root so the non-admin user doesn't need to
+    if ! command -v speedtest-cli &>/dev/null; then
+        echo "[SpeedMonitor install] Installing speedtest-cli (pip3)..."
+        pip3 install speedtest-cli --quiet --break-system-packages 2>/dev/null || \
+        pip3 install speedtest-cli --quiet 2>/dev/null || \
+        echo "[SpeedMonitor install] WARNING: speedtest-cli install failed — will use Cloudflare fallback"
+    fi
+
     echo "[SpeedMonitor install] Running as root — re-launching as $CONSOLE_USER..."
     TMP=$(mktemp /tmp/speedmonitor_install_XXXXXX.sh)
     curl -fsSL "https://speed-monitor-six.vercel.app/install.sh" -o "$TMP"
@@ -58,13 +68,11 @@ rm -rf "$APP_DEST" 2>/dev/null || true
 # 1. Create directories
 mkdir -p "$CONFIG_DIR" "$BIN_DIR" "$DATA_DIR" "$LAUNCH_AGENTS" "$HOME/Applications"
 
-# 2. Install Homebrew + speedtest-cli if missing
+# 2. Ensure speedtest-cli is available (installed as root in Jamf flow; try Homebrew as fallback)
 if ! command -v speedtest-cli &>/dev/null; then
-    log "Installing speedtest-cli..."
+    log "speedtest-cli not found — attempting Homebrew install..."
     if ! command -v brew &>/dev/null; then
-        log "Installing Homebrew..."
-        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        # Add Homebrew to PATH for this session
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>/dev/null || true
         eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || eval "$(/usr/local/bin/brew shellenv)" 2>/dev/null || true
     fi
     brew install speedtest-cli --quiet 2>/dev/null || log "WARNING: speedtest-cli install failed — speeds will use Cloudflare fallback"
