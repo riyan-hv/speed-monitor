@@ -28,17 +28,19 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Get all device IDs mapped to this email
+  // Get all distinct device IDs that have posted results tagged with this email
   const { data: mappings, error: mapError } = await supabaseAdmin
-    .from('device_user_map')
+    .from('speed_results')
     .select('device_id')
     .eq('user_email', decodedEmail)
+    .order('timestamp_utc', { ascending: false })
+    .limit(500)
 
   if (mapError) {
     return NextResponse.json({ error: 'Failed to fetch device mappings' }, { status: 500 })
   }
 
-  const deviceIds = (mappings ?? []).map((m) => m.device_id as string)
+  const deviceIds = [...new Set((mappings ?? []).map((m) => m.device_id as string))]
 
   if (deviceIds.length === 0) {
     return NextResponse.json({ devices: [] })
